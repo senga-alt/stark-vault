@@ -141,7 +141,7 @@
 
 (define-private (check-yield-availability)
   (let (
-      (current-block block-height)
+      (current-block stacks-block-height)
       (last-distribution (var-get last-distribution-block))
     )
     (if (>= current-block (+ last-distribution u144))
@@ -174,7 +174,7 @@
     (asserts! (not (var-get pool-active)) err-already-initialized)
     (var-set pool-active true)
     (var-set yield-rate initial-rate)
-    (var-set last-distribution-block block-height)
+    (var-set last-distribution-block stacks-block-height)
     (ok true)
   )
 )
@@ -226,7 +226,7 @@
     (asserts! (var-get pool-active) err-pool-inactive)
     (try! (check-yield-availability))
     (let (
-        (current-block block-height)
+        (current-block stacks-block-height)
         (blocks-passed (- current-block (var-get last-distribution-block)))
         (total-yield-amount (calculate-yield (var-get total-staked) blocks-passed))
       )
@@ -250,7 +250,7 @@
     (let (
         (staker-balance (default-to u0 (map-get? staker-balances tx-sender)))
         (current-rewards (default-to u0 (map-get? staker-rewards tx-sender)))
-        (blocks-passed (- block-height (var-get last-distribution-block)))
+        (blocks-passed (- stacks-block-height (var-get last-distribution-block)))
         (new-rewards (calculate-yield staker-balance blocks-passed))
         (total-rewards (+ current-rewards new-rewards))
       )
@@ -320,5 +320,5 @@
   (var-set pool-active false)
   (var-set insurance-active false)
   (var-set yield-rate u500) ;; 5% base APY
-  (var-set last-distribution-block block-height)
+  (var-set last-distribution-block stacks-block-height)
 )
