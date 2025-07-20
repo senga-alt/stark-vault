@@ -89,3 +89,92 @@
 (define-read-only (get-name)
   (ok (var-get token-name))
 )
+
+(define-read-only (get-symbol)
+  (ok (var-get token-symbol))
+)
+
+(define-read-only (get-decimals)
+  (ok u8)
+)
+
+(define-read-only (get-balance (account principal))
+  (ok (default-to u0 (map-get? staker-balances account)))
+)
+
+(define-read-only (get-total-supply)
+  (ok (var-get total-staked))
+)
+
+(define-read-only (get-token-uri)
+  (ok (var-get token-uri))
+)
+
+;; PRIVATE UTILITY FUNCTIONS
+
+(define-private (calculate-yield
+    (amount uint)
+    (blocks uint)
+  )
+  (let (
+      (rate (var-get yield-rate))
+      (time-factor (/ blocks u144)) ;; Approximately daily blocks
+      (base-yield (* amount rate))
+    )
+    (/ (* base-yield time-factor) u10000)
+  )
+)
+
+(define-private (update-risk-score
+    (staker principal)
+    (amount uint)
+  )
+  (let (
+      (current-score (default-to u0 (map-get? risk-scores staker)))
+      (stake-factor (/ amount u100000000)) ;; Factor based on stake size
+      (new-score (+ current-score stake-factor))
+    )
+    (map-set risk-scores staker new-score)
+    new-score
+  )
+)
+
+(define-private (check-yield-availability)
+  (let (
+      (current-block block-height)
+      (last-distribution (var-get last-distribution-block))
+    )
+    (if (>= current-block (+ last-distribution u144))
+      (ok true)
+      err-no-yield-available
+    )
+  )
+)
+
+(define-private (transfer-internal
+    (amount uint)
+    (sender principal)
+    (recipient principal)
+  )
+  (let ((sender-balance (default-to u0 (map-get? staker-balances sender))))
+    (asserts! (>= sender-balance amount) err-insufficient-balance)
+    (map-set staker-balances sender (- sender-balance amount))
+    (map-set staker-balances recipient
+      (+ (default-to u0 (map-get? staker-balances recipient)) amount)
+    )
+    (ok true)
+  )
+)
+
+;; CORE PROTOCOL FUNCTIONS
+
+(define-public (initialize-pool (initial-rate uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (not (var-get pool-active)) err-already-initialized)
+    (var-set pool-active true)
+    (var-set yield-rate initial-rate)
+    (var-set last-distribution-block block-height)
+    (ok true)
+  )
+)
