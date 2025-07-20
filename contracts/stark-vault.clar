@@ -178,3 +178,87 @@
     (ok true)
   )
 )
+
+(define-public (stake (amount uint))
+  (begin
+    (asserts! (var-get pool-active) err-pool-inactive)
+    (asserts! (>= amount minimum-stake-amount) err-minimum-stake)
+    ;; Update staker balance
+    (let (
+        (current-balance (default-to u0 (map-get? staker-balances tx-sender)))
+        (new-balance (+ current-balance amount))
+      )
+      (map-set staker-balances tx-sender new-balance)
+      (var-set total-staked (+ (var-get total-staked) amount))
+      ;; Update risk score
+      (update-risk-score tx-sender amount)
+      ;; Set up insurance coverage if active
+      (if (var-get insurance-active)
+        (map-set insurance-coverage tx-sender amount)
+        true
+      )
+      (ok true)
+    )
+  )
+)
+
+(define-public (unstake (amount uint))
+  (let ((current-balance (default-to u0 (map-get? staker-balances tx-sender))))
+    (asserts! (var-get pool-active) err-pool-inactive)
+    (asserts! (>= current-balance amount) err-insufficient-balance)
+    ;; Process pending rewards before unstaking
+    (try! (claim-rewards))
+    ;; Update balances
+    (map-set staker-balances tx-sender (- current-balance amount))
+    (var-set total-staked (- (var-get total-staked) amount))
+    ;; Update insurance coverage if active
+    (if (var-get insurance-active)
+      (map-set insurance-coverage tx-sender (- current-balance amount))
+      true
+    )
+    (ok true)
+  )
+)
+
+(define-public (distribute-yield)
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (var-get pool-active) err-pool-inactive)
+    (try! (check-yield-availability))
+    (let (
+        (current-block block-height)
+        (blocks-passed (- current-block (var-get last-distribution-block)))
+        (total-yield-amount (calculate-yield (var-get total-staked) blocks-passed))
+      )
+      ;; Update total yield
+      (var-set total-yield (+ (var-get total-yield) total-yield-amount))
+      (var-set last-distribution-block current-block)
+      ;; Record distribution history
+      (map-set yield-distribution-history current-block {
+        block: current-block,
+        amount: total-yield-amount,
+        apy: (var-get yield-rate),
+      })
+      (ok total-yield-amount)
+    )
+  )
+)
+
+(define-public (claim-rewards)
+  (begin
+    (asserts! (var-get pool-active) err-pool-inactive)
+    (let (
+        (staker-balance (default-to u0 (map-get? staker-balances tx-sender)))
+        (current-rewards (default-to u0 (map-get? staker-rewards tx-sender)))
+        (blocks-passed (- block-height (var-get last-distribution-block)))
+        (new-rewards (calculate-yield staker-balance blocks-passed))
+        (total-rewards (+ current-rewards new-rewards))
+      )
+      (asserts! (> total-rewards u0) err-no-yield-available)
+      ;; Update rewards balance
+      (map-set staker-rewards tx-sender u0)
+      (map-set staker-balances tx-sender (+ staker-balance total-rewards))
+      (ok total-rewards)
+    )
+  )
+)
