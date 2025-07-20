@@ -262,3 +262,63 @@
     )
   )
 )
+
+;; TRANSFER & TOKEN MANAGEMENT
+
+(define-public (transfer
+    (amount uint)
+    (sender principal)
+    (recipient principal)
+    (memo (optional (buff 34)))
+  )
+  (begin
+    (asserts! (is-eq tx-sender sender) err-unauthorized)
+    (try! (transfer-internal amount sender recipient))
+    (match memo
+      to-print (print to-print)
+      0x
+    )
+    (ok true)
+  )
+)
+
+(define-public (set-token-uri (new-uri (optional (string-utf8 256))))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (ok (var-set token-uri new-uri))
+  )
+)
+
+;; READ-ONLY QUERY FUNCTIONS
+
+(define-read-only (get-staker-balance (staker principal))
+  (ok (default-to u0 (map-get? staker-balances staker)))
+)
+
+(define-read-only (get-staker-rewards (staker principal))
+  (ok (default-to u0 (map-get? staker-rewards staker)))
+)
+
+(define-read-only (get-pool-stats)
+  (ok {
+    total-staked: (var-get total-staked),
+    total-yield: (var-get total-yield),
+    current-rate: (var-get yield-rate),
+    pool-active: (var-get pool-active),
+    insurance-active: (var-get insurance-active),
+    insurance-balance: (var-get insurance-fund-balance),
+  })
+)
+
+(define-read-only (get-risk-score (staker principal))
+  (ok (default-to u0 (map-get? risk-scores staker)))
+)
+
+;; CONTRACT INITIALIZATION
+
+(begin
+  (var-set pool-active false)
+  (var-set insurance-active false)
+  (var-set yield-rate u500) ;; 5% base APY
+  (var-set last-distribution-block block-height)
+)
